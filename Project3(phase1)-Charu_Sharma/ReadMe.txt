@@ -1,7 +1,7 @@
 ------ Project 3 : Phase 1 ----------
 ENPM661				
 Charu Sharma			  John-Edward Draganov
-117555448			      113764875
+117555448			  113764875
 charu107@umd.edu		jdragano@umd.edu
 -------------------------------------
 python: 3.0
