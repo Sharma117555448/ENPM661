@@ -1,0 +1,124 @@
+#!/usr/bin/env python
+
+import rospy
+import math
+import sys
+import tf
+from geometry_msgs.msg import Twist, Point
+from sensor_msgs.msg import LaserScan
+from tf.transformations import euler_from_quaternion
+
+rospy.init_node("move_robot")
+pub = rospy.Publisher("cmd_vel", Twist, queue_size=5)
+velocity_msg = Twist()
+rate = rospy.Rate(4)
+tf_listener = tf.TransformListener()
+parent_frame = 'odom'
+child_frame = 'base_footprint'
+k_h_gain = 1
+k_v_gain = 1
+
+try:
+    tf_listener.waitForTransform(parent_frame, child_frame, rospy.Time(), rospy.Duration(1.0))
+except (tf.Exception, tf.ConnectivityException, tf.LookupException):
+    rospy.loginfo("Cannot find transform between {p} and {c}".format(p=parent_frame, c=child_frame))
+    rospy.signal_shutdown("tf Exception")
+
+def compute_distance(x1, y1, x2, y2):
+    return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+
+
+def get_odom_data():
+    try:
+        (trans, rot) = tf_listener.lookupTransform(parent_frame, child_frame, rospy.Time(0))
+        rotation = euler_from_quaternion(rot)
+    except (tf.Exception, tf.ConnectivityException, tf.LookupException):
+        rospy.loginfo("TF Exception")
+        return
+    return Point(*trans), rotation[2]
+
+
+def get_goal():
+    x = 0
+    y = 0
+    if len(sys.argv) == 4:
+        x = float(sys.argv[1])
+        y = float(sys.argv[2])
+    else:
+        sys.exit('Not enough arguments')
+    return x, y
+
+
+def go_to_goal():
+
+    (position, rotation) = get_odom_data()
+    last_rotation = 0
+    goal_x, goal_y = get_goal()
+    # compute the distance 
+    distance_to_goal = compute_distance(position.x, position.y, goal_x, goal_y)
+
+    while distance_to_goal > 0.05:
+        (position, rotation) = get_odom_data()
+        x_start = position.x
+        y_start = position.y
+        rospy.loginfo("x = {0}, y = {1}".format(x_start, y_start))
+        angle_to_goal = math.atan2(goal_y - y_start, goal_x - x_start)
+
+        if angle_to_goal < -math.pi/4 or angle_to_goal > math.pi/4:
+            if 0 > goal_y > y_start:
+                angle_to_goal = -2 * math.pi + angle_to_goal
+            elif 0 <= goal_y < y_start:
+                angle_to_goal = 2 * math.pi + angle_to_goal
+        if last_rotation > math.pi - 0.1 and rotation <= 0:
+            rotation = 2 * math.pi + rotation
+        elif last_rotation < -math.pi + 0.1 and rotation > 0:
+            rotation = -2 * math.pi + rotation
+
+        velocity_msg.angular.z = k_v_gain * angle_to_goal-rotation
+        distance_to_goal = compute_distance(position.x, position.y, goal_x, goal_y)
+
+        velocity_msg.linear.x = min(k_h_gain * distance_to_goal, 0.5)
+
+        if velocity_msg.angular.z > 0:
+            velocity_msg.angular.z = min(velocity_msg.angular.z, 1.5)
+        else:
+            velocity_msg.angular.z = max(velocity_msg.angular.z, -1.5)
+
+        last_rotation = rotation
+        pub.publish(velocity_msg)
+        rate.sleep()
+
+    velocity_msg.linear.x = 0.0
+    velocity_msg.angular.z = 0.0
+
+    pub.publish(velocity_msg)
+
+
+def sensor_callback(msg):
+    front = msg.ranges[0]
+    left = msg.ranges[90]
+    right = msg.ranges[270]
+
+    rospy.loginfo("Distance from obstacle (front): {f}".format(f=front))
+    rospy.loginfo("Distance from obstacle (left): {l}".format(l=left))
+    rospy.loginfo("Distance from obstacle (right): {r}".format(r=right))
+    rospy.loginfo("--" * 20)
+
+def read_scan():
+    rospy.Subscriber("scan", LaserScan, sensor_callback)
+    rospy.spin()
+
+if __name__ == "__main__":
+    action = ""
+    if len(sys.argv) == 4:
+        action = str(sys.argv[3])
+    else:
+        sys.exit('Not enough arguments passed to the command line')
+    
+    if action == "goal":
+        while not rospy.is_shutdown():
+            go_to_goal()
+    else:
+        sys.exit('Unknown argument')
+
+
