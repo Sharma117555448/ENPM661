@@ -86,42 +86,46 @@ def sensor_callback(msg):
 def go_to_goal(goal_x, goal_y):
     (position, rotation) = get_odom_data()
     last_rotation = 0
-
+    goals = [[0,0],[2,4],[5,8]]
+    
     # compute the distance from the current position to the goal
-    distance_to_goal = compute_distance(position.x, position.y, goal_x, goal_y)
+    for a in goals: 
+        print(a[0])
+        quit()
+        distance_to_goal = compute_distance(position.x, position.y, a[0], a[1])
 
-    while distance_to_goal > 0.05:
-        (position, rotation) = get_odom_data()
-        x_start = position.x
-        y_start = position.y
-        rospy.loginfo("x = {0}, y = {1}".format(x_start, y_start))
-        angle_to_goal = math.atan2(goal_y - y_start, goal_x - x_start)
+        while distance_to_goal > 0.05:
+            (position, rotation) = get_odom_data()
+            x_start = position.x
+            y_start = position.y
+            rospy.loginfo("x = {0}, y = {1}".format(x_start, y_start))
+            angle_to_goal = math.atan2(goal_y - y_start, goal_x - x_start)
 
-        if angle_to_goal < -math.pi/4 or angle_to_goal > math.pi/4:
-            if 0 > goal_y > y_start:
-                angle_to_goal = -2 * math.pi + angle_to_goal
-            elif 0 <= goal_y < y_start:
-                angle_to_goal = 2 * math.pi + angle_to_goal
-        if last_rotation > math.pi - 0.1 and rotation <= 0:
-            rotation = 2 * math.pi + rotation
-        elif last_rotation < -math.pi + 0.1 and rotation > 0:
-            rotation = -2 * math.pi + rotation
+            if angle_to_goal < -math.pi/4 or angle_to_goal > math.pi/4:
+                if 0 > goal_y > y_start:
+                    angle_to_goal = -2 * math.pi + angle_to_goal
+                elif 0 <= goal_y < y_start:
+                    angle_to_goal = 2 * math.pi + angle_to_goal
+            if last_rotation > math.pi - 0.1 and rotation <= 0:
+                rotation = 2 * math.pi + rotation
+            elif last_rotation < -math.pi + 0.1 and rotation > 0:
+                rotation = -2 * math.pi + rotation
 
-        velocity_msg.angular.z = k_v_gain * angle_to_goal-rotation
-        distance_to_goal = compute_distance(position.x, position.y, goal_x, goal_y)
+            velocity_msg.angular.z = k_v_gain * angle_to_goal-rotation
+            distance_to_goal = compute_distance(position.x, position.y, goal_x, goal_y)
 
-        velocity_msg.linear.x = min(k_h_gain * distance_to_goal, 0.5)
+            velocity_msg.linear.x = min(k_h_gain * distance_to_goal, 0.5)
 
 
-        if velocity_msg.angular.z > 0:
-            velocity_msg.angular.z = min(velocity_msg.angular.z, 1.5)
-        else:
-            velocity_msg.angular.z = max(velocity_msg.angular.z, -1.5)
+            if velocity_msg.angular.z > 0:
+                velocity_msg.angular.z = min(velocity_msg.angular.z, 1.5)
+            else:
+                velocity_msg.angular.z = max(velocity_msg.angular.z, -1.5)
 
-        # update the new rotation for the next loop
-        last_rotation = rotation
-        pub.publish(velocity_msg)
-        rate.sleep()
+            # update the new rotation for the next loop
+            last_rotation = rotation
+            pub.publish(velocity_msg)
+            rate.sleep()
 
     # force the robot to stop by setting linear and angular velocities to 0
     velocity_msg.linear.x = 0.0
